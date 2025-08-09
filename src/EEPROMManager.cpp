@@ -24,11 +24,7 @@ void storeCredentials() {
   writeStringToEEPROM(COUNTRY_ADDR, storedCountry);
 
   // Store host and data transfer parameters
-  writeStringToEEPROM(HOST_ADDR, storedEmailAddress);
-  EEPROM.put(HOST_PORT, storedHostPort);
-  writeStringToEEPROM(ENDPOINT_ADDR, storedEndpoint);
   writeStringToEEPROM(DEVICE_UUID, storedDeviceUUID);
-  EEPROM.put(POST_INTERVAL, storedPostInterval);
 
   EEPROM.write(0, 1);  // Set a flag indicating valid data is stored
   EEPROM.commit();
@@ -47,11 +43,6 @@ void loadCredentials() {
   storedCity      = readStringFromEEPROM(CITY_ADDR);
   storedCountry   = readStringFromEEPROM(COUNTRY_ADDR);
 
-    // Load host and data transfer parameters
-    storedEmailAddress = readStringFromEEPROM(HOST_ADDR);
-    EEPROM.get(HOST_PORT, storedHostPort);
-    EEPROM.get(POST_INTERVAL, storedPostInterval);
-    storedEndpoint = readStringFromEEPROM(ENDPOINT_ADDR);
   } else {
     Serial.println("No valid data in EEPROM");
   }

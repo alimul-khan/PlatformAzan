@@ -8,10 +8,6 @@ ESP8266WebServer server(80);
 String storedSSID = "Not Connected";
 String storedPassword = "None";
 String storedIP = "None";
-String storedEmailAddress = "None";
-String storedEndpoint = DEFAULT_ENDPOINT;
-int storedPostInterval = 10000; // Default post interval
-int storedHostPort = 80;        // Default port
 String storedDeviceUUID = "None"; // Example UUID
 
 // New location-related fields
@@ -28,9 +24,6 @@ void initializeServer() {
     server.on("/", handleRoot);
     server.on("/data", handleWiFiConfig);
     server.on("/config", handleDataConfig);
-    server.on("/update_email", handleUpdateEmail);
-    server.on("/update_post_interval", handleUpdatePostInterval);
-    server.on("/update_endpoint", handleUpdateEndpoint);
 
     server.begin();
     Serial.println("HTTP server started.");
@@ -132,10 +125,6 @@ void handleWiFiConfig() {
 // Handle data configuration form submission
 // Handle data configuration form submission
 void handleDataConfig() {
-    // Legacy fields (keep for now; safe to remove later)
-    if (server.hasArg("email"))          storedEmailAddress = server.arg("email");
-    if (server.hasArg("post_interval"))  storedPostInterval = server.arg("post_interval").toInt();
-    if (server.hasArg("endpoint"))       storedEndpoint     = server.arg("endpoint");
 
     // Latitude: N = positive, S = negative
     if (server.hasArg("lat_val") && server.hasArg("lat_hem")) {
@@ -178,40 +167,3 @@ void handleDataConfig() {
 }
 
 
-// Handle email update
-void handleUpdateEmail() {
-    if (server.hasArg("email")) {
-        storedEmailAddress = server.arg("email");
-        storeCredentials(); // Save to EEPROM
-        server.send(200, "text/plain", "Email updated successfully!");
-    } else {
-        server.send(400, "text/plain", "Invalid email input.");
-    }
-}
-
-// Handle post interval update
-void handleUpdatePostInterval() {
-    if (server.hasArg("post_interval")) {
-        storedPostInterval = server.arg("post_interval").toInt();
-        storeCredentials(); // Save to EEPROM
-        server.send(200, "text/plain", "Post Interval updated successfully!");
-    } else {
-        server.send(400, "text/plain", "Invalid post interval input.");
-    }
-}
-
-// Handle endpoint update
-void handleUpdateEndpoint() {
-    if (server.hasArg("endpoint")) {
-        String endpoint = server.arg("endpoint");
-        if (endpoint == "default") {
-            storedEndpoint = DEFAULT_ENDPOINT;
-        } else if (server.hasArg("custom_endpoint")) {
-            storedEndpoint = server.arg("custom_endpoint");
-        }
-        storeCredentials(); // Save to EEPROM
-        server.send(200, "text/plain", "Endpoint updated successfully!");
-    } else {
-        server.send(400, "text/plain", "Invalid endpoint input.");
-    }
-}

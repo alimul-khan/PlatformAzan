@@ -104,7 +104,7 @@ void handleConnectedOperations() {
 
     // Use the same timer for both LED blinking and Serial logging
     unsigned long currentMillis = millis();
-    if (currentMillis - lastOperationTime >= storedPostInterval) {
+    if (currentMillis - lastOperationTime >= 5000) {
         lastOperationTime = currentMillis;
 
         // Toggle LED state
@@ -114,7 +114,7 @@ void handleConnectedOperations() {
        Serial.println(ledState ? "ON" : "OFF");
         // Print stored configuration to Serial Monitor
         printStoredConfiguration();
-        Serial.println("In the loop function....................................................");
+        
     }
 }
 
@@ -126,17 +126,17 @@ void printStoredConfiguration() {
     Serial.println("SSID: " + storedSSID);
     Serial.println("Password: " + storedPassword);
     Serial.println("IP: " + storedIP);
-    Serial.println("Email: " + storedEmailAddress);
-    Serial.println("Endpoint: " + storedEndpoint);
-    Serial.println("Post Interval: " + String(storedPostInterval));
+
     Serial.println("Serial Number: "  + String(serialNumber));
     Serial.println("Latitude: "  + storedLatitude);
     Serial.println("Longitude: " + storedLongitude);
     Serial.println("Time Zone: " + storedTimeZone);
     Serial.println("City: "      + storedCity);
     Serial.println("Country: "   + storedCountry);
-
+    Serial.println("Printing Done: ....................................................");
     Serial.println();
+
+
 }
 
 
