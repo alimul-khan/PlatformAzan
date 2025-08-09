@@ -16,6 +16,12 @@ extern String storedEndpoint;
 extern int storedPostInterval;
 extern int storedHostPort;
 extern String storedDeviceUUID;
+extern String storedLatitude;
+extern String storedLongitude;
+extern String storedTimeZone;
+extern String storedCity;
+extern String storedCountry;
+
 
 // Function Declarations
 void initializeServer();

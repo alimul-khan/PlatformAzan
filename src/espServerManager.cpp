@@ -14,6 +14,15 @@ int storedPostInterval = 10000; // Default post interval
 int storedHostPort = 80;        // Default port
 String storedDeviceUUID = "None"; // Example UUID
 
+// New location-related fields
+String storedLatitude  = "0.0000";
+String storedLongitude = "0.0000";
+String storedTimeZone  = "UTC";
+String storedCity      = "Unknown";
+String storedCountry   = "Unknown";
+
+
+
 // Initialize the server and define routes
 void initializeServer() {
     server.on("/", handleRoot);
@@ -49,6 +58,13 @@ void handleRoot() {
     htmlContent.replace("{{OPTIONS}}", options);
     htmlContent.replace("{{SSID}}", storedSSID);
     htmlContent.replace("{{IP}}", storedIP);
+
+    htmlContent.replace("{{LAT}}",      storedLatitude);
+    htmlContent.replace("{{LON}}",      storedLongitude);
+    htmlContent.replace("{{TZ}}",       storedTimeZone);
+    htmlContent.replace("{{CITY}}",     storedCity);
+    htmlContent.replace("{{COUNTRY}}",  storedCountry);
+
 
     server.send(200, "text/html", htmlContent);
 }
@@ -86,24 +102,33 @@ void handleWiFiConfig() {
     }
 }
 
+
 // Handle data configuration form submission
 void handleDataConfig() {
-    if (server.hasArg("email") && server.hasArg("post_interval") && server.hasArg("endpoint")) {
-        storedEmailAddress = server.arg("email");
-        storedPostInterval = server.arg("post_interval").toInt();
-        storedEndpoint = server.arg("endpoint");
+    // Accept any subset of fields
+    if (server.hasArg("email"))          storedEmailAddress = server.arg("email");
+    if (server.hasArg("post_interval"))  storedPostInterval = server.arg("post_interval").toInt();
+    if (server.hasArg("endpoint"))       storedEndpoint     = server.arg("endpoint");
 
-        Serial.println("Configuration Received:");
-        Serial.println("Email: " + storedEmailAddress);
-        Serial.println("Post Interval: " + String(storedPostInterval));
-        Serial.println("Endpoint: " + storedEndpoint);
+    if (server.hasArg("latitude"))       storedLatitude  = server.arg("latitude");
+    if (server.hasArg("longitude"))      storedLongitude = server.arg("longitude");
+    if (server.hasArg("timezone"))       storedTimeZone  = server.arg("timezone");
+    if (server.hasArg("city"))           storedCity      = server.arg("city");
+    if (server.hasArg("country"))        storedCountry   = server.arg("country");
 
-        storeCredentials(); // Save to EEPROM
+    Serial.println("Configuration Received:");
+    Serial.println("Email: " + storedEmailAddress);
+    Serial.println("Post Interval: " + String(storedPostInterval));
+    Serial.println("Endpoint: " + storedEndpoint);
+    Serial.println("Latitude: " + storedLatitude);
+    Serial.println("Longitude: " + storedLongitude);
+    Serial.println("Time Zone: " + storedTimeZone);
+    Serial.println("City: " + storedCity);
+    Serial.println("Country: " + storedCountry);
 
-        server.send(200, "text/plain", "Configuration saved successfully!");
-    } else {
-        server.send(400, "text/plain", "Invalid configuration. Please fill all fields.");
-    }
+    storeCredentials(); // Save to EEPROM
+
+    server.send(200, "text/plain", "Configuration saved successfully!");
 }
 
 // Handle email update

@@ -129,7 +129,13 @@ void printStoredConfiguration() {
     Serial.println("Email: " + storedEmailAddress);
     Serial.println("Endpoint: " + storedEndpoint);
     Serial.println("Post Interval: " + String(storedPostInterval));
-    Serial.print("Serial Number: "  + String(serialNumber));
+    Serial.println("Serial Number: "  + String(serialNumber));
+    Serial.println("Latitude: "  + storedLatitude);
+    Serial.println("Longitude: " + storedLongitude);
+    Serial.println("Time Zone: " + storedTimeZone);
+    Serial.println("City: "      + storedCity);
+    Serial.println("Country: "   + storedCountry);
+
     Serial.println();
 }
 

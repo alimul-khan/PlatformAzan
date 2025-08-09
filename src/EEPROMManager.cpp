@@ -3,17 +3,25 @@
 
 extern String storedSSID, storedPassword, storedIP;
 extern String storedEmailAddress, storedEndpoint, storedDeviceUUID;
+// extern String storedDeviceUUID;
 extern int storedHostPort, storedPostInterval;
 
 
 void initializeEEPROM() {
-  EEPROM.begin(512);
+  // EEPROM.begin(512);
+  EEPROM.begin(1024);
 }
 
 void storeCredentials() {
   writeStringToEEPROM(SSID_ADDR, storedSSID);
   writeStringToEEPROM(PASSWORD_ADDR, storedPassword);
   writeStringToEEPROM(SSID_IP, storedIP);
+  // Store location and timezone info
+  writeStringToEEPROM(LAT_ADDR, storedLatitude);
+  writeStringToEEPROM(LON_ADDR, storedLongitude);
+  writeStringToEEPROM(TZ_ADDR, storedTimeZone);
+  writeStringToEEPROM(CITY_ADDR, storedCity);
+  writeStringToEEPROM(COUNTRY_ADDR, storedCountry);
 
   // Store host and data transfer parameters
   writeStringToEEPROM(HOST_ADDR, storedEmailAddress);
@@ -31,6 +39,13 @@ void loadCredentials() {
     storedSSID = readStringFromEEPROM(SSID_ADDR);
     storedPassword = readStringFromEEPROM(PASSWORD_ADDR);
     storedIP = readStringFromEEPROM(SSID_IP);
+
+    // Load location and timezone info
+  storedLatitude  = readStringFromEEPROM(LAT_ADDR);
+  storedLongitude = readStringFromEEPROM(LON_ADDR);
+  storedTimeZone  = readStringFromEEPROM(TZ_ADDR);
+  storedCity      = readStringFromEEPROM(CITY_ADDR);
+  storedCountry   = readStringFromEEPROM(COUNTRY_ADDR);
 
     // Load host and data transfer parameters
     storedEmailAddress = readStringFromEEPROM(HOST_ADDR);

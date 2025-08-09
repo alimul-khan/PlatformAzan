@@ -125,6 +125,8 @@ const String indexHTML = R"rawliteral(
           </form>
       </div>
       
+
+      
       
       <div class="section">
           <h3>Update Post Interval</h3>
@@ -162,6 +164,30 @@ const String indexHTML = R"rawliteral(
           </script>
       </div>
 
+
+          <!-- New Location/Time Section -->
+    <div class="section">
+      <h3>Update Location & Time Info</h3>
+      <form action="/config" method="POST">
+        <label for="latitude">Latitude:</label>
+        <input type="text" id="latitude" name="latitude" value="{{LAT}}">
+        
+        <label for="longitude">Longitude:</label>
+        <input type="text" id="longitude" name="longitude" value="{{LON}}">
+        
+        <label for="timezone">Time Zone:</label>
+        <input type="text" id="timezone" name="timezone" value="{{TZ}}">
+        
+        <label for="city">City:</label>
+        <input type="text" id="city" name="city" value="{{CITY}}">
+        
+        <label for="country">Country:</label>
+        <input type="text" id="country" name="country" value="{{COUNTRY}}">
+        
+        <input type="submit" value="Update Location & Time Info">
+      </form>
+    </div>
+    
   </div>
 
   <script>
