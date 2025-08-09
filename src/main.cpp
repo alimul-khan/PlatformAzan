@@ -5,6 +5,8 @@
 
 #include "sendData.h"
 
+void printStoredConfiguration();
+
 
 WiFiClient wifiClient;
 
@@ -41,13 +43,13 @@ void setup() {
 
     // Initialize the web server
     initializeServer();
-    // printStoredConfiguration();
+    printStoredConfiguration();
 }
 
 
 
 void attemptWiFiConnection() {
-//  printStoredConfiguration();
+ printStoredConfiguration();
     // Try to connect using stored SSID and password
     WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
 
@@ -118,7 +120,7 @@ void handleConnectedOperations() {
 //        Serial.println(thermalData);
 
         // Print stored configuration to Serial Monitor
-        // printStoredConfiguration();
+        printStoredConfiguration();
     }
 }
 
