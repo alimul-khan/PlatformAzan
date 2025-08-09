@@ -5,6 +5,7 @@
 
 #include "sendData.h"
 
+
 void printStoredConfiguration();
 
 
@@ -109,18 +110,11 @@ void handleConnectedOperations() {
         // Toggle LED state
         ledState = !ledState;
         digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
-//        Serial.print("LED state: ");
-//        Serial.println(ledState ? "ON" : "OFF");
-
-
-
-
-        // Print thermal data
-//        Serial.println("Thermal Data:");
-//        Serial.println(thermalData);
-
+       Serial.print("LED state: ");
+       Serial.println(ledState ? "ON" : "OFF");
         // Print stored configuration to Serial Monitor
         printStoredConfiguration();
+        Serial.println("In the loop function....................................................");
     }
 }
 
@@ -152,5 +146,7 @@ void loop() {
     } else {
         // If connected, proceed with normal operation
         handleConnectedOperations();
+        
+
     }
 }

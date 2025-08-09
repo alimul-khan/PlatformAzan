@@ -5,6 +5,7 @@ extern String storedSSID, storedPassword, storedIP;
 extern String storedEmailAddress, storedEndpoint, storedDeviceUUID;
 extern int storedHostPort, storedPostInterval;
 
+
 void initializeEEPROM() {
   EEPROM.begin(512);
 }
