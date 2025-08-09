@@ -166,28 +166,51 @@ const String indexHTML = R"rawliteral(
 
 
           <!-- New Location/Time Section -->
-    <div class="section">
-      <h3>Update Location & Time Info</h3>
-      <form action="/config" method="POST">
-        <label for="latitude">Latitude:</label>
-        <input type="text" id="latitude" name="latitude" value="{{LAT}}">
-        
-        <label for="longitude">Longitude:</label>
-        <input type="text" id="longitude" name="longitude" value="{{LON}}">
-        
-        <label for="timezone">Time Zone:</label>
-        <input type="text" id="timezone" name="timezone" value="{{TZ}}">
-        
-        <label for="city">City:</label>
-        <input type="text" id="city" name="city" value="{{CITY}}">
-        
-        <label for="country">Country:</label>
-        <input type="text" id="country" name="country" value="{{COUNTRY}}">
-        
-        <input type="submit" value="Update Location & Time Info">
-      </form>
-    </div>
-    
+        <div class="section">
+        <h3>Update Location & Time Info</h3>
+        <form action="/config" method="POST">
+            <!-- Latitude -->
+            <label for="latitude">Latitude <span>(N = positive, S = negative)</span>:</label>
+            <div>
+            <input type="text" id="lat_val" name="lat_val" value="{{LAT_VAL}}">
+            <select id="lat_hem" name="lat_hem">
+                <option value="N" {{LAT_N_SEL}}>N</option>
+                <option value="S" {{LAT_S_SEL}}>S</option>
+            </select>
+            </div>
+
+            <!-- Longitude -->
+            <label for="longitude">Longitude <span>(E = positive, W = negative)</span>:</label>
+            <div>
+            <input type="text" id="lon_val" name="lon_val" value="{{LON_VAL}}">
+            <select id="lon_hem" name="lon_hem">
+                <option value="E" {{LON_E_SEL}}>E</option>
+                <option value="W" {{LON_W_SEL}}>W</option>
+            </select>
+            </div>
+
+            <!-- Time Zone -->
+            <label for="timezone">Time Zone:</label>
+            <div>
+            <select id="tz_sign" name="tz_sign">
+                <option value="+" {{TZ_PLUS_SEL}}>GMT +</option>
+                <option value="-" {{TZ_MINUS_SEL}}>GMT -</option>
+            </select>
+            <input type="text" id="tz_val" name="tz_val" value="{{TZ_VAL}}" placeholder="e.g., 6.5">
+            </div>
+
+            <!-- City / Country (unchanged) -->
+            <label for="city">City:</label>
+            <input type="text" id="city" name="city" value="{{CITY}}">
+
+            <label for="country">Country:</label>
+            <input type="text" id="country" name="country" value="{{COUNTRY}}">
+
+            <input type="submit" value="Update Location & Time Info">
+        </form>
+        </div>
+
+
   </div>
 
   <script>

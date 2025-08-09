@@ -37,6 +37,7 @@ void initializeServer() {
 }
 
 // Handle root page
+// Handle root page
 void handleRoot() {
     String htmlContent = indexHTML;
 
@@ -54,17 +55,42 @@ void handleRoot() {
         }
     }
 
-    // Replace placeholders
+    // Replace placeholders for Wi-Fi info
     htmlContent.replace("{{OPTIONS}}", options);
     htmlContent.replace("{{SSID}}", storedSSID);
     htmlContent.replace("{{IP}}", storedIP);
 
-    htmlContent.replace("{{LAT}}",      storedLatitude);
-    htmlContent.replace("{{LON}}",      storedLongitude);
-    htmlContent.replace("{{TZ}}",       storedTimeZone);
-    htmlContent.replace("{{CITY}}",     storedCity);
-    htmlContent.replace("{{COUNTRY}}",  storedCountry);
+    // Prefill City/Country
+    htmlContent.replace("{{CITY}}",    storedCity);
+    htmlContent.replace("{{COUNTRY}}", storedCountry);
 
+    // ---- Latitude (N/S) ----
+    float latF = storedLatitude.length() ? storedLatitude.toFloat() : 0.0f;
+    bool  latNeg = latF < 0.0f;
+    String latAbs = String(fabs(latF), 6);  // keep precision
+
+    htmlContent.replace("{{LAT_VAL}}",   latAbs);
+    htmlContent.replace("{{LAT_N_SEL}}", latNeg ? "" : "selected");
+    htmlContent.replace("{{LAT_S_SEL}}", latNeg ? "selected" : "");
+
+    // ---- Longitude (E/W) ----
+    float lonF = storedLongitude.length() ? storedLongitude.toFloat() : 0.0f;
+    bool  lonNeg = lonF < 0.0f;
+    String lonAbs = String(fabs(lonF), 6);
+
+    htmlContent.replace("{{LON_VAL}}",   lonAbs);
+    htmlContent.replace("{{LON_E_SEL}}", lonNeg ? "" : "selected");
+    htmlContent.replace("{{LON_W_SEL}}", lonNeg ? "selected" : "");
+
+    // ---- Timezone (GMT +/-) ----
+    float tzF = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
+                ? 0.0f : storedTimeZone.toFloat();
+    bool  tzNeg = tzF < 0.0f;
+    String tzAbs = String(fabs(tzF), 2);   // e.g., 6.5
+
+    htmlContent.replace("{{TZ_VAL}}",       tzAbs);
+    htmlContent.replace("{{TZ_PLUS_SEL}}",  tzNeg ? "" : "selected");
+    htmlContent.replace("{{TZ_MINUS_SEL}}", tzNeg ? "selected" : "");
 
     server.send(200, "text/html", htmlContent);
 }
@@ -104,32 +130,53 @@ void handleWiFiConfig() {
 
 
 // Handle data configuration form submission
+// Handle data configuration form submission
 void handleDataConfig() {
-    // Accept any subset of fields
+    // Legacy fields (keep for now; safe to remove later)
     if (server.hasArg("email"))          storedEmailAddress = server.arg("email");
     if (server.hasArg("post_interval"))  storedPostInterval = server.arg("post_interval").toInt();
     if (server.hasArg("endpoint"))       storedEndpoint     = server.arg("endpoint");
 
-    if (server.hasArg("latitude"))       storedLatitude  = server.arg("latitude");
-    if (server.hasArg("longitude"))      storedLongitude = server.arg("longitude");
-    if (server.hasArg("timezone"))       storedTimeZone  = server.arg("timezone");
-    if (server.hasArg("city"))           storedCity      = server.arg("city");
-    if (server.hasArg("country"))        storedCountry   = server.arg("country");
+    // Latitude: N = positive, S = negative
+    if (server.hasArg("lat_val") && server.hasArg("lat_hem")) {
+        float v = server.arg("lat_val").toFloat();
+        String hem = server.arg("lat_hem");
+        v = (hem == "S") ? -fabs(v) : fabs(v);
+        storedLatitude = String(v, 6);
+    }
 
+    // Longitude: E = positive, W = negative
+    if (server.hasArg("lon_val") && server.hasArg("lon_hem")) {
+        float v = server.arg("lon_val").toFloat();
+        String hem = server.arg("lon_hem");
+        v = (hem == "W") ? -fabs(v) : fabs(v);
+        storedLongitude = String(v, 6);
+    }
+
+    // Time zone: GMT + / -
+    if (server.hasArg("tz_val") && server.hasArg("tz_sign")) {
+        float v = server.arg("tz_val").toFloat();
+        String sign = server.arg("tz_sign");
+        v = (sign == "-") ? -fabs(v) : fabs(v);
+        storedTimeZone = (v == 0.0f) ? "UTC" : String(v, 2);
+    }
+
+    // City / Country
+    if (server.hasArg("city"))    storedCity    = server.arg("city");
+    if (server.hasArg("country")) storedCountry = server.arg("country");
+
+    // Debug
     Serial.println("Configuration Received:");
-    Serial.println("Email: " + storedEmailAddress);
-    Serial.println("Post Interval: " + String(storedPostInterval));
-    Serial.println("Endpoint: " + storedEndpoint);
-    Serial.println("Latitude: " + storedLatitude);
+    Serial.println("Latitude: "  + storedLatitude);
     Serial.println("Longitude: " + storedLongitude);
     Serial.println("Time Zone: " + storedTimeZone);
-    Serial.println("City: " + storedCity);
-    Serial.println("Country: " + storedCountry);
+    Serial.println("City: "      + storedCity);
+    Serial.println("Country: "   + storedCountry);
 
-    storeCredentials(); // Save to EEPROM
-
+    storeCredentials();
     server.send(200, "text/plain", "Configuration saved successfully!");
 }
+
 
 // Handle email update
 void handleUpdateEmail() {
