@@ -1,3 +1,4 @@
+
 #include <ESP8266WiFi.h>
 #include "espServerManager.h"  // Handles the web server and routes
 #include "EEPROMManager.h"     // Manages EEPROM operations
@@ -6,8 +7,10 @@
 
 #include "TimeManager.h"
 
-void printStoredConfiguration();
+#include "PrayerTimes.h"
 
+void printStoredConfiguration();
+void printPrayerTimesToday();
 
 WiFiClient wifiClient;
 
@@ -113,6 +116,8 @@ void handleConnectedOperations() {
         // Print stored configuration to Serial Monitor
         printStoredConfiguration();
         Serial.println("Current Time: " + currentTime());
+        printPrayerTimesToday();
+         Serial.println();
 
         
         
@@ -135,11 +140,39 @@ void printStoredConfiguration() {
     Serial.println("City: "      + storedCity);
     Serial.println("Country: "   + storedCountry);
     Serial.println("Printing Done: ....................................................");
-    Serial.println();
+   
 
 
 }
 
+void printPrayerTimesToday() {
+    // Get today's date from NTP
+    timeClient.update();
+    time_t epoch = timeClient.getEpochTime();
+    struct tm *ptm = gmtime((time_t *)&epoch);
+    int year  = ptm->tm_year + 1900;
+    int month = ptm->tm_mon + 1;
+    int day   = ptm->tm_mday;
+
+    // Inputs from your stored fields
+    double lat = storedLatitude.toFloat();
+    double lon = storedLongitude.toFloat();
+    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
+                   ? 0.0f : storedTimeZone.toFloat();
+
+    // Compute (Fajr/Isha twilight = -15°, Asr = Hanafi here; change to ASR_SHAFII if you prefer)
+    PrayerTimes pt;
+    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+
+    // Print nicely
+    Serial.println("Today's Prayer Times:");
+    Serial.println("  Fajr:    " + toHHMM(pt.fajrMin));
+    Serial.println("  Sunrise: " + toHHMM(pt.sunriseMin));
+    Serial.println("  Dhuhr:   " + toHHMM(pt.dhuhrMin));
+    Serial.println("  Asr:     " + toHHMM(pt.asrMin));
+    Serial.println("  Maghrib: " + toHHMM(pt.maghribMin));
+    Serial.println("  Isha:    " + toHHMM(pt.ishaMin));
+}
 
 
 void loop() {
@@ -157,3 +190,6 @@ void loop() {
 
     }
 }
+
+
+
