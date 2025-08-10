@@ -2,9 +2,8 @@
 #include "Constants.h" // Include the constants header for EEPROM address offsets
 
 extern String storedSSID, storedPassword, storedIP;
-extern String storedEmailAddress, storedEndpoint, storedDeviceUUID;
+extern String  storedDeviceUUID;
 // extern String storedDeviceUUID;
-extern int storedHostPort, storedPostInterval;
 
 
 void initializeEEPROM() {

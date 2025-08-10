@@ -1,10 +1,10 @@
 #include <ESP8266WiFi.h>
 #include "espServerManager.h"  // Handles the web server and routes
 #include "EEPROMManager.h"     // Manages EEPROM operations
-// #include "Constants.h"         // Stores constants like DEFAULT_ENDPOINT
 
 #include "sendData.h"
 
+#include "TimeManager.h"
 
 void printStoredConfiguration();
 
@@ -20,32 +20,30 @@ float frame[32*24];
 String serialNumber;
 
 
+
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
-    // Start Serial Monitor
+    pinMode(LED_BUILTIN, OUTPUT);
     Serial.begin(115200);
     Serial.println("\nThermoCam Configuration Starting...");
 
-    // Initialize EEPROM
     initializeEEPROM();
-
-    // Load stored credentials
     loadCredentials();
 
-    // Start the Wi-Fi Access Point
     WiFi.softAP(ssidAP);
     Serial.print("Access Point created. Connect to '");
     Serial.print(ssidAP);
     Serial.println("'.");
 
-    // Print the AP's IP Address
     Serial.print("Access Point IP Address: ");
     Serial.println(WiFi.softAPIP());
 
-    // Initialize the web server
     initializeServer();
+    // Start NTP client
+    initializeTimeClient();
+
     printStoredConfiguration();
 }
+
 
 
 
@@ -114,6 +112,9 @@ void handleConnectedOperations() {
        Serial.println(ledState ? "ON" : "OFF");
         // Print stored configuration to Serial Monitor
         printStoredConfiguration();
+        Serial.println("Current Time: " + currentTime());
+
+        
         
     }
 }
@@ -143,7 +144,7 @@ void printStoredConfiguration() {
 
 void loop() {
     // Handle HTTP requests
-//    handleServerRequests();
+  //  handleServerRequests();
     server.handleClient();
 
     // If not connected, attempt to connect with saved credentials
