@@ -3,11 +3,12 @@
 #include "espServerManager.h"  // Handles the web server and routes
 #include "EEPROMManager.h"     // Manages EEPROM operations
 
-#include "sendData.h"
 
 #include "TimeManager.h"
 
 #include "PrayerTimes.h"
+#include "AzanPlay.h"
+
 
 void printStoredConfiguration();
 void printPrayerTimesToday();
@@ -27,7 +28,7 @@ String serialNumber;
 void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
     Serial.begin(115200);
-    Serial.println("\nThermoCam Configuration Starting...");
+    Serial.println("\nSmart Azan Player Configuration Starting...");
 
     initializeEEPROM();
     loadCredentials();
@@ -45,13 +46,18 @@ void setup() {
     initializeTimeClient();
 
     printStoredConfiguration();
+
+      Serial.println("\nAzanPlay debug test");
+
+  initAzanPlay(); // uses LED_BUILTIN by default
+
 }
 
 
 
 
 void attemptWiFiConnection() {
- printStoredConfiguration();
+//  printStoredConfiguration();
     // Try to connect using stored SSID and password
     WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
 
@@ -91,37 +97,74 @@ void attemptWiFiConnection() {
 }
 
 
+// Return minutes-from-midnight and seconds from the TimeManager's currentTime()
+static void getNowMinSec(int& nowMin, int& nowSec) {
+  String ts = currentTime();              // "YYYY-MM-DD HH:MM:SS"
+  int hh = ts.substring(11, 13).toInt();
+  int mm = ts.substring(14, 16).toInt();
+  nowSec  = ts.substring(17, 19).toInt();
+  nowMin  = hh * 60 + mm;
+}
 
 void handleConnectedOperations() {
-    // Check if Wi-Fi is disconnected
-    if (WiFi.status() != WL_CONNECTED) {
-        // Exit this function immediately when disconnected
-        return;
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  static unsigned long lastOperationTime = 0;
+  static bool ledState = false;
+  static int lastTriggered = -1;  // -1 = none, 0=Fajr,1=Sunrise,2=Dhuhr,3=Asr,4=Maghrib,5=Isha
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastOperationTime >= 5000) {
+    lastOperationTime = currentMillis;
+
+    // Blink heartbeat
+    ledState = !ledState;
+    digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
+
+    // Get current time string
+    String nowStr = currentTime();
+    Serial.println("Check at " + nowStr);
+
+    // Compute today's prayer times
+    int year, month, day;
+    getCurrentYMD(year, month, day);
+    double lat = storedLatitude.toFloat();
+    double lon = storedLongitude.toFloat();
+    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f : storedTimeZone.toFloat();
+
+    PrayerTimes pt;
+    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+
+    // Match current time
+    int nowMin, nowSec;
+    getNowMinSec(nowMin, nowSec);
+
+    bool matched = false;
+    String matchName = "";
+
+    auto checkAndTrigger = [&](int targetMin, int id, const char* name, bool fajr=false) {
+      if (nowMin == targetMin && nowSec == 0 && lastTriggered != id) {
+        matched = true;
+        matchName = name;
+        if (fajr) playFajr(); else playOthers();
+        lastTriggered = id;
+      }
+    };
+
+    checkAndTrigger(pt.fajrMin,    0, "Fajr", true);
+    checkAndTrigger(pt.dhuhrMin,   2, "Dhuhr");
+    checkAndTrigger(pt.asrMin,     3, "Asr");
+    checkAndTrigger(pt.maghribMin, 4, "Maghrib");
+    checkAndTrigger(pt.ishaMin,    5, "Isha");
+
+    // Debug output
+    if (matched) {
+      Serial.println("Matching result: Matched with " + matchName);
+    } else {
+      Serial.println("Matching result: No match");
     }
-
-    // Variables for blinking and logging
-    static unsigned long lastOperationTime = 0;
-    static bool ledState = false;
-
-    // Use the same timer for both LED blinking and Serial logging
-    unsigned long currentMillis = millis();
-    if (currentMillis - lastOperationTime >= 5000) {
-        lastOperationTime = currentMillis;
-
-        // Toggle LED state
-        ledState = !ledState;
-        digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
-       Serial.print("LED state: ");
-       Serial.println(ledState ? "ON" : "OFF");
-        // Print stored configuration to Serial Monitor
-        printStoredConfiguration();
-        Serial.println("Current Time: " + currentTime());
-        printPrayerTimesToday();
-         Serial.println();
-
-        
-        
-    }
+    Serial.println();
+  }
 }
 
 
@@ -144,6 +187,7 @@ void printStoredConfiguration() {
 
 
 }
+
 
 void printPrayerTimesToday() {
     // Get today's date from NTP
@@ -174,7 +218,6 @@ void printPrayerTimesToday() {
     Serial.println("  Isha:    " + toHHMM(pt.ishaMin));
 }
 
-
 void loop() {
     // Handle HTTP requests
   //  handleServerRequests();
@@ -190,6 +233,5 @@ void loop() {
 
     }
 }
-
 
 

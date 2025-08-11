@@ -10,4 +10,6 @@ extern NTPClient timeClient;
 void initializeTimeClient();
 String currentTime();
 
+void getCurrentYMD(int& year, int& month, int& day);
+
 #endif
