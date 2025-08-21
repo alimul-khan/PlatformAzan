@@ -1,109 +1,254 @@
+
+
+
+
 #include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include "espServerManager.h"  // Handles the web server and routes
+#include "EEPROMManager.h"     // Manages EEPROM operations
+
+
+#include "TimeManager.h"
+
+#include "PrayerTimes.h"
 #include "AzanPlay.h"
 
+
+void printStoredConfiguration();
+void printPrayerTimesToday();
+
+WiFiClient wifiClient;
+
+// Wi-Fi credentials for the ESP8266's Access Point
+const char *ssidAP = "Azan";
+
+// Timer for periodic Serial Monitor updates
+unsigned long lastPrintTime = 0;
+float frame[32*24];
+String serialNumber;
+
+
+
 void setup() {
-  delay(5000);
-  azanSetup();
+  
+    pinMode(LED_BUILTIN, OUTPUT);
+    Serial.begin(115200);
+    Serial.println("\nSmart Azan Player Configuration Starting...");
+
+    delay(5000);
+    azanSetup();
+
+    initializeEEPROM();
+    loadCredentials();
+
+    WiFi.softAP(ssidAP);
+    Serial.print("Access Point created. Connect to '");
+    Serial.print(ssidAP);
+    Serial.println("'.");
+
+    Serial.print("Access Point IP Address: ");
+    Serial.println(WiFi.softAPIP());
+
+    initializeServer();
+    // Start NTP client
+    initializeTimeClient();
+
+    printStoredConfiguration();
+
+      Serial.println("\nAzanPlay debug test");
+
+
+}
+
+
+
+
+void attemptWiFiConnection() {
+//  printStoredConfiguration();
+    // Try to connect using stored SSID and password
+    WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
+
+    // Variables for blinking logic
+    unsigned long blinkLastTime = 0;
+    static bool ledState = false;
+
+    // Print waiting message to Serial Monitor
+    Serial.println("Attempting to connect to Wi-Fi using stored credentials...");
+
+    // Give time for connection
+    unsigned long startTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) { // Wait for 10 seconds
+        unsigned long currentMillis = millis();
+
+        // Blink LED every 100ms
+        if (currentMillis - blinkLastTime >= 100) {
+            blinkLastTime = currentMillis;
+            digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH); // Toggle LED
+            ledState = !ledState;
+        }
+
+        // Handle incoming HTTP requests to update credentials
+        server.handleClient();
+
+        // Small delay to avoid overloading the CPU
+        delay(10);
+    }
+
+    // Check connection status
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nConnected successfully!");
+        Serial.println("IP Address: " + WiFi.localIP().toString());
+    } else {
+        Serial.println("\nFailed to connect within the timeout period.");
+    }
+}
+
+
+// Return minutes-from-midnight and seconds from the TimeManager's currentTime()
+static void getNowMinSec(int& nowMin, int& nowSec) {
+  String ts = currentTime();              // "YYYY-MM-DD HH:MM:SS"
+  int hh = ts.substring(11, 13).toInt();
+  int mm = ts.substring(14, 16).toInt();
+  nowSec  = ts.substring(17, 19).toInt();
+  nowMin  = hh * 60 + mm;
+}
+
+void handleConnectedOperations() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  static unsigned long lastOperationTime = 0;
+  static bool ledState = false;
+  static int lastTriggered = -1;  // -1 = none, 0=Fajr,1=Sunrise,2=Dhuhr,3=Asr,4=Maghrib,5=Isha
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastOperationTime >= 5000) {
+    lastOperationTime = currentMillis;
+
+    // Blink heartbeat
+    ledState = !ledState;
+    digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
+
+    // Get current time string
+    String nowStr = currentTime();
+    Serial.println("Check at " + nowStr);
+
+    // Compute today's prayer times
+    int year, month, day;
+    getCurrentYMD(year, month, day);
+    double lat = storedLatitude.toFloat();
+    double lon = storedLongitude.toFloat();
+    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f : storedTimeZone.toFloat();
+
+    PrayerTimes pt;
+    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+
+    // Match current time
+    int nowMin, nowSec;
+    getNowMinSec(nowMin, nowSec);
+
+    bool matched = false;
+    String matchName = "";
+
+    auto checkAndTrigger = [&](int targetMin, int id, const char* name, bool fajr = false) {
+      if (nowMin == targetMin && nowSec == 0 && lastTriggered != id) {
+        matched = true;
+        matchName = name;
+
+        if (fajr) {
+          playMP3Index(4);   // /MP3/0004.mp3
+          waitForFinish(120000);
+          delay(100);
+        } else {
+          playMP3Index(2);   // /MP3/0002.mp3
+          waitForFinish(120000);
+          delay(100);
+        }
+
+        lastTriggered = id;
+      }
+    };
+
+    checkAndTrigger(pt.fajrMin,    0, "Fajr",    true);
+    checkAndTrigger(pt.dhuhrMin,   2, "Dhuhr");
+    checkAndTrigger(pt.asrMin,     3, "Asr");
+    checkAndTrigger(pt.maghribMin, 4, "Maghrib");
+    checkAndTrigger(pt.ishaMin,    5, "Isha");
+
+    // Debug output
+    if (matched) {
+      Serial.println("Matching result: Matched with " + matchName);
+    } else {
+      Serial.println("Matching result: No match");
+    }
+    Serial.println();
+  }
+}
+
+
+
+
+void printStoredConfiguration() {
+    Serial.println("Stored Configuration:");
+    Serial.println("SSID: " + storedSSID);
+    Serial.println("Password: " + storedPassword);
+    Serial.println("IP: " + storedIP);
+
+    Serial.println("Serial Number: "  + String(serialNumber));
+    Serial.println("Latitude: "  + storedLatitude);
+    Serial.println("Longitude: " + storedLongitude);
+    Serial.println("Time Zone: " + storedTimeZone);
+    Serial.println("City: "      + storedCity);
+    Serial.println("Country: "   + storedCountry);
+    Serial.println("Printing Done: ....................................................");
+   
+
+
+}
+
+
+void printPrayerTimesToday() {
+    // Get today's date from NTP
+    timeClient.update();
+    time_t epoch = timeClient.getEpochTime();
+    struct tm *ptm = gmtime((time_t *)&epoch);
+    int year  = ptm->tm_year + 1900;
+    int month = ptm->tm_mon + 1;
+    int day   = ptm->tm_mday;
+
+    // Inputs from your stored fields
+    double lat = storedLatitude.toFloat();
+    double lon = storedLongitude.toFloat();
+    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
+                   ? 0.0f : storedTimeZone.toFloat();
+
+    // Compute (Fajr/Isha twilight = -15°, Asr = Hanafi here; change to ASR_SHAFII if you prefer)
+    PrayerTimes pt;
+    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+
+    // Print nicely
+    Serial.println("Today's Prayer Times:");
+    Serial.println("  Fajr:    " + toHHMM(pt.fajrMin));
+    Serial.println("  Sunrise: " + toHHMM(pt.sunriseMin));
+    Serial.println("  Dhuhr:   " + toHHMM(pt.dhuhrMin));
+    Serial.println("  Asr:     " + toHHMM(pt.asrMin));
+    Serial.println("  Maghrib: " + toHHMM(pt.maghribMin));
+    Serial.println("  Isha:    " + toHHMM(pt.ishaMin));
 }
 
 void loop() {
-  playMP3Index(4);   // /MP3/0004.mp3
-  waitForFinish(120000);
-  delay(100);
+    // Handle HTTP requests
+  //  handleServerRequests();
+    server.handleClient();
 
-  playMP3Index(2);   // /MP3/0002.mp3
-  waitForFinish(120000);
-  delay(100);
+    // If not connected, attempt to connect with saved credentials
+    if (WiFi.status() != WL_CONNECTED) {
+        attemptWiFiConnection();
+    } else {
+        // If connected, proceed with normal operation
+        handleConnectedOperations();
+        
+
+    }
 }
 
 
-
-
-// #include <Arduino.h>
-// #include <SoftwareSerial.h>
-
-// // Wiring:
-// //  MP3 TX -> ESP D5 (GPIO14) [ESP RX]
-// //  MP3 RX <- ESP D6 (GPIO12) [ESP TX]
-// //  GND <-> GND, VCC 3.2–5.2 V (level-shift MP3 TX if VCC=5V)
-
-// #define RX_PIN D5
-// #define TX_PIN D6
-// SoftwareSerial mp3Serial(RX_PIN, TX_PIN);  // RX, TX
-
-// // ---- YX5300 helpers ----
-// uint16_t checksum(uint8_t cmd, uint8_t fb, uint8_t p1, uint8_t p2) {
-//   uint32_t sum = 0xFF + 0x06 + cmd + fb + p1 + p2;
-//   return 0xFFFF - sum + 1;
-// }
-// void sendCmd(uint8_t cmd, uint16_t param, uint8_t fb = 1) {
-//   uint8_t p1 = (param >> 8) & 0xFF, p2 = param & 0xFF;
-//   uint16_t cs = checksum(cmd, fb, p1, p2);
-//   uint8_t pkt[10] = {0x7E,0xFF,0x06,cmd,fb,p1,p2,(uint8_t)(cs>>8),(uint8_t)cs,0xEF};
-//   mp3Serial.write(pkt, sizeof(pkt));
-//   mp3Serial.flush();
-// }
-
-// // Read one framed packet 0x7E ... 0xEF (typical len=10)
-// bool readPacket(uint8_t *buf, size_t &len, unsigned long timeout_ms = 600) {
-//   enum { WAIT_START, COLLECT } st = WAIT_START;
-//   size_t idx = 0;
-//   unsigned long t0 = millis();
-//   while (millis() - t0 < timeout_ms) {
-//     if (!mp3Serial.available()) { delay(1); yield(); continue; }
-//     uint8_t b = mp3Serial.read();
-//     if (st == WAIT_START) {
-//       if (b == 0x7E) { st = COLLECT; buf[idx++] = b; }
-//     } else {
-//       buf[idx++] = b;
-//       if (b == 0xEF && idx >= 10) { len = idx; return true; }
-//       if (idx >= 32) { len = idx; return true; }  // safety
-//     }
-//   }
-//   return false;
-// }
-
-// void playMP3Index(uint16_t i) {        // /MP3/0001.mp3 -> i=1
-//   Serial.print("Playing music ");
-//   Serial.println(i);
-//   sendCmd(0x12, i, 1);                 // play from /MP3 folder
-// }
-
-
-
-// bool waitForFinish(unsigned long timeout_ms = 120000) {
-//   unsigned long t0 = millis();
-//   while (millis() - t0 < timeout_ms) {
-//     uint8_t pkt[32]; size_t n = 0;
-//     if (readPacket(pkt, n, 300)) {
-//       if (pkt[3] == 0x3D) {                 // play finished
-//         Serial.println("Playing music completed");
-//         return true;
-//       }
-//     }
-//     delay(1); yield();
-//   }
-//   Serial.println("Timed out waiting for finish");
-//   return false;
-// }
-
-
-// void setup() {
-//   Serial.begin(115200);
-//   mp3Serial.begin(9600);
-//   delay(5000);              // let module + SD init
-
-//   sendCmd(0x06, 20, 1);     // volume 0..30
-//   sendCmd(0x09, 0x0002, 1); // select TF (microSD)
-//   Serial.println("MP3 ready");
-// }
-
-// void loop() {
-//   playMP3Index(4);                 // /MP3/0001.mp3
-//   waitForFinish();                 // waits for 0x3D
-//   delay(100);
-
-//   playMP3Index(2);                 // /MP3/0002.mp3
-//   waitForFinish();
-//   delay(100);
-// }
