@@ -91,7 +91,7 @@ static void playIndex(uint16_t idx) {
   ensureInit();
   Serial.print("Play index "); Serial.println(idx);
   yxSend(0x06, volumeLevel);  // ensure volume
-  yxSend(0x03, idx);          // play by index (0001 -> 1, etc.)
+  yxSend(0x12, idx);          // play by index (0001 -> 1, etc.)
   waitForFinish();            // block until finished (or timeout)
 }
 
