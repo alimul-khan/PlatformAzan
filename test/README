@@ -9,3 +9,9 @@ in the development cycle.
 
 More information about PlatformIO Unit Testing:
 - https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+
+
+to igonre local changes and pull the latest commit
+git fetch origin
+git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
+git clean -fd

@@ -1,14 +1,8 @@
-
-#ifndef AZANPLAY_H
-#define AZANPLAY_H
-
+#pragma once
 #include <Arduino.h>
 
-// Call once in setup (ledPin defaults to LED_BUILTIN)
-void initAzanPlay(int ledPin = LED_BUILTIN);
+// Plays 0001.mp3 and waits until it finishes
+void playFajr();
 
-// Debug placeholders (blink patterns)
-void playFajr();    // 1s ON / 1s OFF, 5 times
-void playOthers();  // 100ms ON / 100ms OFF, 20 times
-
-#endif
+// Plays 0002.mp3 and waits until it finishes
+void playOthers();

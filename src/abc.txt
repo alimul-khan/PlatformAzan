@@ -57,7 +57,7 @@ void setup() {
 
 
 void attemptWiFiConnection() {
- printStoredConfiguration();
+//  printStoredConfiguration();
     // Try to connect using stored SSID and password
     WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
 
@@ -97,125 +97,75 @@ void attemptWiFiConnection() {
 }
 
 
+// Return minutes-from-midnight and seconds from the TimeManager's currentTime()
+static void getNowMinSec(int& nowMin, int& nowSec) {
+  String ts = currentTime();              // "YYYY-MM-DD HH:MM:SS"
+  int hh = ts.substring(11, 13).toInt();
+  int mm = ts.substring(14, 16).toInt();
+  nowSec  = ts.substring(17, 19).toInt();
+  nowMin  = hh * 60 + mm;
+}
+
 void handleConnectedOperations() {
-    if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) return;
 
-    static unsigned long lastOperationTime = 0;
-    static bool ledState = false;
+  static unsigned long lastOperationTime = 0;
+  static bool ledState = false;
+  static int lastTriggered = -1;  // -1 = none, 0=Fajr,1=Sunrise,2=Dhuhr,3=Asr,4=Maghrib,5=Isha
 
-    // Cache today's prayer times + play-once flags
-    static int cachedYear = -1, cachedMonth = -1, cachedDay = -1;
-    static PrayerTimes pt;
-    static bool playedFajr = false, playedSunrise = false, playedDhuhr = false,
-                playedAsr = false, playedMaghrib = false, playedIsha = false;
-
-    unsigned long nowMs = millis();
-    if (nowMs - lastOperationTime < 5000) return;  // run every 5s
-    lastOperationTime = nowMs;
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastOperationTime >= 5000) {
+    lastOperationTime = currentMillis;
 
     // Blink heartbeat
     ledState = !ledState;
     digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
-    Serial.print("LED state: "); Serial.println(ledState ? "ON" : "OFF");
 
-    // --- Time & (re)compute today's prayer times if date changed ---
-    timeClient.update();
-    time_t epoch = timeClient.getEpochTime();
-    struct tm *ptm = gmtime((time_t *)&epoch);
-    int year  = ptm->tm_year + 1900;
-    int month = ptm->tm_mon + 1;
-    int day   = ptm->tm_mday;
+    // Get current time string
+    String nowStr = currentTime();
+    Serial.println("Check at " + nowStr);
 
-    if (year != cachedYear || month != cachedMonth || day != cachedDay) {
-        cachedYear = year; cachedMonth = month; cachedDay = day;
+    // Compute today's prayer times
+    int year, month, day;
+    getCurrentYMD(year, month, day);
+    double lat = storedLatitude.toFloat();
+    double lon = storedLongitude.toFloat();
+    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f : storedTimeZone.toFloat();
 
-        double lat = storedLatitude.toFloat();
-        double lon = storedLongitude.toFloat();
-        float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
-                       ? 0.0f : storedTimeZone.toFloat();
+    PrayerTimes pt;
+    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
 
-        computePrayerTimes(year, month, day, lat, lon, tz,
-                           -15.0, -15.0, ASR_HANAFI, pt);
+    // Match current time
+    int nowMin, nowSec;
+    getNowMinSec(nowMin, nowSec);
 
-        // reset “played” flags at start of a new day
-        playedFajr = playedSunrise = playedDhuhr = playedAsr = playedMaghrib = playedIsha = false;
+    bool matched = false;
+    String matchName = "";
 
-        Serial.println("Recomputed today's prayer times:");
-        Serial.println("  Fajr:    " + toHHMM(pt.fajrMin));
-        Serial.println("  Sunrise: " + toHHMM(pt.sunriseMin));
-        Serial.println("  Dhuhr:   " + toHHMM(pt.dhuhrMin));
-        Serial.println("  Asr:     " + toHHMM(pt.asrMin));
-        Serial.println("  Maghrib: " + toHHMM(pt.maghribMin));
-        Serial.println("  Isha:    " + toHHMM(pt.ishaMin));
-    }
-
-    // Current minutes from local midnight
-    int curMin = timeClient.getHours() * 60 + timeClient.getMinutes();
-
-    // Helper: trigger once when minute matches (5s poll means we’ll land in the minute)
-    auto matchAndPlay = [&](int targetMin, bool &playedFlag, bool fajr) {
-        if (!playedFlag && curMin == targetMin) {
-            Serial.print("Azan time reached: ");
-            Serial.println(toHHMM(targetMin));
-            if (fajr) playFajr(); else playOthers();
-            playedFlag = true;
-        }
+    auto checkAndTrigger = [&](int targetMin, int id, const char* name, bool fajr=false) {
+      if (nowMin == targetMin && nowSec == 0 && lastTriggered != id) {
+        matched = true;
+        matchName = name;
+        if (fajr) playFajr(); else playOthers();
+        lastTriggered = id;
+      }
     };
 
-    matchAndPlay(pt.fajrMin,    playedFajr,    /*fajr=*/true);
-    matchAndPlay(pt.sunriseMin, playedSunrise, /*fajr=*/false);
-    matchAndPlay(pt.dhuhrMin,   playedDhuhr,   /*fajr=*/false);
-    matchAndPlay(pt.asrMin,     playedAsr,     /*fajr=*/false);
-    matchAndPlay(pt.maghribMin, playedMaghrib, /*fajr=*/false);
-    matchAndPlay(pt.ishaMin,    playedIsha,    /*fajr=*/false);
+    checkAndTrigger(pt.fajrMin,    0, "Fajr", true);
+    checkAndTrigger(pt.dhuhrMin,   2, "Dhuhr");
+    checkAndTrigger(pt.asrMin,     3, "Asr");
+    checkAndTrigger(pt.maghribMin, 4, "Maghrib");
+    checkAndTrigger(pt.ishaMin,    5, "Isha");
 
-    // Optional debug
-    Serial.println("Current Time: " + currentTime());
-    printStoredConfiguration();
+    // Debug output
+    if (matched) {
+      Serial.println("Matching result: Matched with " + matchName);
+    } else {
+      Serial.println("Matching result: No match");
+    }
     Serial.println();
+  }
 }
-
-
-// void handleConnectedOperations() {
-//     // Check if Wi-Fi is disconnected
-//     if (WiFi.status() != WL_CONNECTED) {
-//         // Exit this function immediately when disconnected
-//         return;
-//     }
-
-//     // Variables for blinking and logging
-//     static unsigned long lastOperationTime = 0;
-//     static bool ledState = false;
-
-//     // Use the same timer for both LED blinking and Serial logging
-//     unsigned long currentMillis = millis();
-//     if (currentMillis - lastOperationTime >= 5000) {
-//         lastOperationTime = currentMillis;
-
-//         // Toggle LED state
-//         ledState = !ledState;
-//         digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
-//        Serial.print("LED state: ");
-//        Serial.println(ledState ? "ON" : "OFF");
-//         // Print stored configuration to Serial Monitor
-//         printStoredConfiguration();
-//         Serial.println("Current Time: " + currentTime());
-        
-//         printPrayerTimesToday();
-//         Serial.println();
-
-//         Serial.println("Test: Fajr pattern");
-//         playFajr();
-
-//         delay(2000);
-
-//         Serial.println("Test: Others pattern");
-//         playOthers();
-
-//         delay(3000);
-              
-//     }
-// }
 
 
 
@@ -238,27 +188,23 @@ void printStoredConfiguration() {
 
 }
 
+
 void printPrayerTimesToday() {
-    // MANUAL DATE/TIME OVERRIDE
-    int year  = 2025;
-    int month = 8;    // August
-    int day   = 9;
-    int hh    = 14;   // Optional: manual clock hours
-    int mm    = 30;   // Optional: manual clock minutes
-    int ss    = 0;    // Optional: manual clock seconds
+    // Get today's date from NTP
+    timeClient.update();
+    time_t epoch = timeClient.getEpochTime();
+    struct tm *ptm = gmtime((time_t *)&epoch);
+    int year  = ptm->tm_year + 1900;
+    int month = ptm->tm_mon + 1;
+    int day   = ptm->tm_mday;
 
     // Inputs from your stored fields
     double lat = storedLatitude.toFloat();
     double lon = storedLongitude.toFloat();
+    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
+                   ? 0.0f : storedTimeZone.toFloat();
 
-    // Manual timezone override (Saskatoon = UTC-6)
-    float tz = -6.0f;
-
-    // Show manual current time for debug
-    Serial.printf("Manual Current Time: %04d-%02d-%02d %02d:%02d:%02d (TZ: %.1f)\n",
-                  year, month, day, hh, mm, ss, tz);
-
-    // Compute prayer times (Fajr/Isha twilight = -15°, Asr = Hanafi)
+    // Compute (Fajr/Isha twilight = -15°, Asr = Hanafi here; change to ASR_SHAFII if you prefer)
     PrayerTimes pt;
     computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
 
@@ -271,36 +217,6 @@ void printPrayerTimesToday() {
     Serial.println("  Maghrib: " + toHHMM(pt.maghribMin));
     Serial.println("  Isha:    " + toHHMM(pt.ishaMin));
 }
-
-
-// void printPrayerTimesToday() {
-//     // Get today's date from NTP
-//     timeClient.update();
-//     time_t epoch = timeClient.getEpochTime();
-//     struct tm *ptm = gmtime((time_t *)&epoch);
-//     int year  = ptm->tm_year + 1900;
-//     int month = ptm->tm_mon + 1;
-//     int day   = ptm->tm_mday;
-
-//     // Inputs from your stored fields
-//     double lat = storedLatitude.toFloat();
-//     double lon = storedLongitude.toFloat();
-//     float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
-//                    ? 0.0f : storedTimeZone.toFloat();
-
-//     // Compute (Fajr/Isha twilight = -15°, Asr = Hanafi here; change to ASR_SHAFII if you prefer)
-//     PrayerTimes pt;
-//     computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
-
-//     // Print nicely
-//     Serial.println("Today's Prayer Times:");
-//     Serial.println("  Fajr:    " + toHHMM(pt.fajrMin));
-//     Serial.println("  Sunrise: " + toHHMM(pt.sunriseMin));
-//     Serial.println("  Dhuhr:   " + toHHMM(pt.dhuhrMin));
-//     Serial.println("  Asr:     " + toHHMM(pt.asrMin));
-//     Serial.println("  Maghrib: " + toHHMM(pt.maghribMin));
-//     Serial.println("  Isha:    " + toHHMM(pt.ishaMin));
-// }
 
 void loop() {
     // Handle HTTP requests
