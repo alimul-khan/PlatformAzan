@@ -1,8 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-// Plays 0001.mp3 and waits until it finishes
-void playFajr();
-
-// Plays 0002.mp3 and waits until it finishes
-void playOthers();
+void azanSetup();                                // init UART + module
+void playMP3Index(uint16_t i);                   // play /MP3/000x.mp3
+bool waitForFinish(unsigned long timeout_ms = 120000); // wait for 0x3D
