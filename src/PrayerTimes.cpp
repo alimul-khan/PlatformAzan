@@ -10,7 +10,28 @@ static inline double clamp(double x)    { if (x < -1.0) return -1.0; if (x > 1.0
 // minutes from local midnight helper
 static inline int toMin(double hours) { return (int)round(hours * 60.0); }
 
+
+// void computePrayerTimes(
+//     int year, int month, int day,
+//     double latDeg, double lonDeg,
+//     float tzHours,
+//     double fajrTwilightDeg, double ishaTwilightDeg,
+//     AsrMethod asrMethod,
+//     PrayerTimes &out)
+// {
+//   // 4) Export (minutes from local midnight) – using fixed custom values
+//   out.fajrMin    = 21 * 60 + 35;  // 04:15
+//   out.sunriseMin = 21 * 60 +  36;  // 06:00
+//   out.dhuhrMin   = 21 * 60 + 37;  // 13:15
+//   out.asrMin     = 21 * 60 +  38;  // 18:05
+//   out.maghribMin = 21 * 60 + 39;  // 20:23
+//   out.ishaMin    = 21 * 60 + 40;  // 22:10
+// }
+
+
+
 // Core computation (cleaned from your original)
+
 void computePrayerTimes(
     int year, int month, int day,
     double latDeg, double lonDeg,
@@ -77,9 +98,9 @@ void computePrayerTimes(
 
   // small empirical adjustments (your original had +5 / +3 minutes on some)
   // Feel free to tweak or remove if undesired:
-  fajrH    += 5.0/60.0;
-  dhuhrH   += 5.0/60.0;
-  maghribH += 3.0/60.0;
+  // fajrH    += 5.0/60.0;
+  // dhuhrH   += 5.0/60.0;
+  // maghribH += 3.0/60.0;
 
   // 4) Export (minutes from local midnight)
   out.fajrMin    = toMin(fajrH);

@@ -118,71 +118,84 @@ void handleConnectedOperations() {
 
   static unsigned long lastOperationTime = 0;
   static bool ledState = false;
-  static int lastTriggered = -1;  // -1 = none, 0=Fajr,1=Sunrise,2=Dhuhr,3=Asr,4=Maghrib,5=Isha
+
+  // Recompute prayer times once per day; run matching once per minute
+  static int lastY = 0, lastM = 0, lastD = 0;
+  static int lastMinuteChecked = -1;
+  static PrayerTimes pt;  // cached for the day
 
   unsigned long currentMillis = millis();
-  if (currentMillis - lastOperationTime >= 5000) {
-    lastOperationTime = currentMillis;
+  if (currentMillis - lastOperationTime < 5000) return;
+  lastOperationTime = currentMillis;
 
-    // Blink heartbeat
-    ledState = !ledState;
-    digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
+  // 1) Heartbeat LED
+  ledState = !ledState;
+  digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
 
-    // Get current time string
-    String nowStr = currentTime();
-    Serial.println("Check at " + nowStr);
+  // 2) Print current timestamp
+  String nowStr = currentTime();  // "YYYY-MM-DD HH:MM:SS"
+  Serial.println("Check at " + nowStr);
 
-    // Compute today's prayer times
-    int year, month, day;
-    getCurrentYMD(year, month, day);
-    double lat = storedLatitude.toFloat();
-    double lon = storedLongitude.toFloat();
-    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f : storedTimeZone.toFloat();
+  // 3) Prepare inputs & recompute if the date changed
+  int y, m, d;
+  getCurrentYMD(y, m, d);
 
-    PrayerTimes pt;
-    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+  double lat = storedLatitude.toFloat();
+  double lon = storedLongitude.toFloat();
+  float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f
+                                                                         : storedTimeZone.toFloat();
 
-    // Match current time
-    int nowMin, nowSec;
-    getNowMinSec(nowMin, nowSec);
-
-    bool matched = false;
-    String matchName = "";
-
-    auto checkAndTrigger = [&](int targetMin, int id, const char* name, bool fajr = false) {
-      if (nowMin == targetMin && nowSec == 0 && lastTriggered != id) {
-        matched = true;
-        matchName = name;
-
-        if (fajr) {
-          playMP3Index(4);   // /MP3/0004.mp3
-          waitForFinish(120000);
-          delay(100);
-        } else {
-          playMP3Index(2);   // /MP3/0002.mp3
-          waitForFinish(120000);
-          delay(100);
-        }
-
-        lastTriggered = id;
-      }
-    };
-
-    checkAndTrigger(pt.fajrMin,    0, "Fajr",    true);
-    checkAndTrigger(pt.dhuhrMin,   2, "Dhuhr");
-    checkAndTrigger(pt.asrMin,     3, "Asr");
-    checkAndTrigger(pt.maghribMin, 4, "Maghrib");
-    checkAndTrigger(pt.ishaMin,    5, "Isha");
-
-    // Debug output
-    if (matched) {
-      Serial.println("Matching result: Matched with " + matchName);
-    } else {
-      Serial.println("Matching result: No match");
-    }
-    Serial.println();
+  if (y != lastY || m != lastM || d != lastD) {
+    computePrayerTimes(y, m, d, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+    printPrayerTimesToday();  // print the schedule for the new day
+    lastY = y; lastM = m; lastD = d;
   }
+
+  // 4) Minute-level matching (ignore seconds)
+  int nowMin, nowSec;
+  getNowMinSec(nowMin, nowSec);   // you already have this; we ignore nowSec
+
+  // Only evaluate once when the minute flips
+  if (nowMin == lastMinuteChecked) {
+    Serial.println("Matching result: No match");
+    Serial.println();
+    return;
+  }
+  lastMinuteChecked = nowMin;
+
+  bool matched = false;
+  String matchName = "";
+
+  auto trigger = [&](int targetMin, const char* name, bool fajr = false) {
+    if (nowMin == targetMin) {
+      matched = true;
+      matchName = name;
+      if (fajr) {
+        playMP3Index(1);           // /MP3/0001.mp3 (Fajr)
+        waitForFinish(180000); // 166s
+        delay(100);
+      } else {
+        playMP3Index(2);           // /MP3/0002.mp3 (others)
+        waitForFinish(180000); //130s
+        delay(100);
+      }
+    }
+  };
+
+  trigger(pt.fajrMin,    "Fajr",    true);
+  trigger(pt.dhuhrMin,   "Dhuhr");
+  trigger(pt.asrMin,     "Asr");
+  trigger(pt.maghribMin, "Maghrib");
+  trigger(pt.ishaMin,    "Isha");
+
+  if (matched) {
+    Serial.println("Matching result: Matched with " + matchName);
+  } else {
+    Serial.println("Matching result: No match");
+  }
+  Serial.println();
 }
+
 
 
 
