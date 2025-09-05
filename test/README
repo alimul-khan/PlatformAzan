@@ -15,3 +15,6 @@ to igonre local changes and pull the latest commit
 git fetch origin
 git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 git clean -fd
+
+
+pio run -t upload -t monitor

@@ -83,13 +83,13 @@ const String indexHTML = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ThermoCam-Configuration</title>
+  <title>Smart-Azan</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>{{CSS}}</style>
 </head>
 <body>
   <div class="container">
-    <h2>Thermo-Cam</h2>
+    <h2>Azan-Configuration</h2>
     <div class="section">
       <p id="currentTime">Loading...</p>
     </div>
