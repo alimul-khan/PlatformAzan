@@ -6,6 +6,7 @@
 #include <ESP8266WiFi.h>
 #include "espServerManager.h"  // Handles the web server and routes
 #include "EEPROMManager.h"     // Manages EEPROM operations
+#include <ESP8266mDNS.h>
 
 
 #include "TimeManager.h"
@@ -48,6 +49,8 @@ void setup() {
 
     Serial.print("Access Point IP Address: ");
     Serial.println(WiFi.softAPIP());
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.hostname("azan");
 
     initializeServer();
     // Start NTP client
@@ -64,44 +67,54 @@ void setup() {
 
 
 void attemptWiFiConnection() {
-//  printStoredConfiguration();
+    // Ensure we're in STA mode and hostname is set before connecting
+    WiFi.mode(WIFI_STA);
+    WiFi.hostname("azan");   // use azan.local
+
     // Try to connect using stored SSID and password
+    Serial.println("Attempting to connect to Wi-Fi using stored credentials...");
     WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
 
-    // Variables for blinking logic
+    // Blink LED while waiting
     unsigned long blinkLastTime = 0;
     static bool ledState = false;
 
-    // Print waiting message to Serial Monitor
-    Serial.println("Attempting to connect to Wi-Fi using stored credentials...");
-
-    // Give time for connection
+    // Wait up to 10 seconds
     unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) { // Wait for 10 seconds
-        unsigned long currentMillis = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 10000UL) {
+        unsigned long now = millis();
 
-        // Blink LED every 100ms
-        if (currentMillis - blinkLastTime >= 100) {
-            blinkLastTime = currentMillis;
-            digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH); // Toggle LED
+        // Blink every 100 ms
+        if (now - blinkLastTime >= 100UL) {
+            blinkLastTime = now;
             ledState = !ledState;
+            digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
         }
 
-        // Handle incoming HTTP requests to update credentials
+        // Keep serving the config page while waiting
         server.handleClient();
-
-        // Small delay to avoid overloading the CPU
         delay(10);
     }
 
-    // Check connection status
     if (WiFi.status() == WL_CONNECTED) {
+        // Stop blinking, set LED off (HIGH on ESP8266 built-in)
+        digitalWrite(LED_BUILTIN, HIGH);
+
         Serial.println("\nConnected successfully!");
         Serial.println("IP Address: " + WiFi.localIP().toString());
+
+        // Start mDNS: http://azan.local
+        if (MDNS.begin("azan")) {
+            MDNS.addService("http", "tcp", 80);
+            Serial.println("mDNS: http://azan.local");
+        } else {
+            Serial.println("mDNS start failed");
+        }
     } else {
         Serial.println("\nFailed to connect within the timeout period.");
     }
 }
+
 
 
 // Return minutes-from-midnight and seconds from the TimeManager's currentTime()
@@ -252,7 +265,7 @@ void loop() {
     // Handle HTTP requests
   //  handleServerRequests();
     server.handleClient();
-
+MDNS.update();
     // If not connected, attempt to connect with saved credentials
     if (WiFi.status() != WL_CONNECTED) {
         attemptWiFiConnection();

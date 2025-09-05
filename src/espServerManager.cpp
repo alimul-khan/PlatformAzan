@@ -1,5 +1,6 @@
 #include "espServerManager.h"
 #include "Constants.h"
+#include <ESP8266mDNS.h>
 
 // Initialize the server
 ESP8266WebServer server(80);
@@ -89,12 +90,17 @@ void handleRoot() {
 }
 
 // Handle Wi-Fi configuration form submission
+// Handle Wi-Fi configuration form submission
 void handleWiFiConfig() {
     if (server.hasArg("ssid") && server.hasArg("password")) {
-        storedSSID = server.arg("ssid");
+        storedSSID     = server.arg("ssid");
         storedPassword = server.arg("password");
 
         Serial.println("Attempting to connect to Wi-Fi...");
+
+        // Set hostname before connecting
+        WiFi.mode(WIFI_STA);
+        WiFi.hostname("azan");
         WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
 
         int timeout = 30; // 30 seconds timeout
@@ -107,19 +113,34 @@ void handleWiFiConfig() {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("\nConnected successfully!");
             storedIP = WiFi.localIP().toString();
-            server.send(200, "text/plain", "Successfully connected to Wi-Fi! IP: " + storedIP);
+
+            // Start mDNS responder for azan.local
+            if (MDNS.begin("azan")) {
+                MDNS.addService("http", "tcp", 80);
+                Serial.println("mDNS: http://azan.local");
+            } else {
+                Serial.println("mDNS start failed");
+            }
+
+            server.send(200, "text/plain",
+                        "Successfully connected to Wi-Fi! IP: " + storedIP);
+
+            // Save only on success
+            storeCredentials();
+
         } else {
             Serial.println("\nFailed to connect.");
             storedSSID = "Connection Failed";
-            storedIP = "None";
+            storedIP   = "None";
             server.send(200, "text/plain", "Failed to connect to Wi-Fi.");
         }
 
-        storeCredentials(); // Save to EEPROM
     } else {
-        server.send(400, "text/plain", "Invalid input. Please provide both SSID and password.");
+        server.send(400, "text/plain",
+                    "Invalid input. Please provide both SSID and password.");
     }
 }
+
 
 
 // Handle data configuration form submission
