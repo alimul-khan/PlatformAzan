@@ -1,13 +1,37 @@
 
+
+
+
+#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include "espServerManager.h"  // Handles the web server and routes
 #include "EEPROMManager.h"     // Manages EEPROM operations
+#include <ESP8266mDNS.h>
 
 
 #include "TimeManager.h"
 
 #include "PrayerTimes.h"
 #include "AzanPlay.h"
+
+
+
+
+// ---- Forward declarations ----
+static bool checkConnectionAndRateLimit();
+static void toggleHeartbeatLED();
+static void logCurrentTime();
+static void updatePrayerTimesIfDateChanged(PrayerTimes &pt);
+static String checkAndTriggerPrayer(const PrayerTimes &pt, int nowMin);
+
+// ---- Module-local state ----
+static unsigned long lastOperationTime = 0;
+static bool heartbeatState = false;
+static int lastY = 0, lastM = 0, lastD = 0;
+static int lastMinuteChecked = -1;
+static PrayerTimes todaysPT;  // cached for the day
+
+
 
 
 void printStoredConfiguration();
@@ -26,20 +50,28 @@ String serialNumber;
 
 
 void setup() {
+  
     pinMode(LED_BUILTIN, OUTPUT);
     Serial.begin(115200);
     Serial.println("\nSmart Azan Player Configuration Starting...");
+
+    delay(5000);
+    azanSetup();
 
     initializeEEPROM();
     loadCredentials();
 
     WiFi.softAP(ssidAP);
+    // WiFi.softAP(ssidAP, "Azan");
+
     Serial.print("Access Point created. Connect to '");
     Serial.print(ssidAP);
     Serial.println("'.");
 
     Serial.print("Access Point IP Address: ");
     Serial.println(WiFi.softAPIP());
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.hostname("azan");
 
     initializeServer();
     // Start NTP client
@@ -49,52 +81,70 @@ void setup() {
 
       Serial.println("\nAzanPlay debug test");
 
-  initAzanPlay(); // uses LED_BUILTIN by default
 
 }
-
 
 
 
 void attemptWiFiConnection() {
-//  printStoredConfiguration();
-    // Try to connect using stored SSID and password
-    WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
+  static uint8_t tries = 0;
+  static unsigned long lastAttempt = 0;
 
-    // Variables for blinking logic
-    unsigned long blinkLastTime = 0;
-    static bool ledState = false;
+  if (WiFi.status() == WL_CONNECTED) return;
 
-    // Print waiting message to Serial Monitor
-    Serial.println("Attempting to connect to Wi-Fi using stored credentials...");
+  // Back off: try at most once every 15s
+  unsigned long now = millis();
+  if (now - lastAttempt < 15000UL) return;
+  lastAttempt = now;
 
-    // Give time for connection
-    unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) { // Wait for 10 seconds
-        unsigned long currentMillis = millis();
+  if (tries >= 3) {
+    // Give up for now; AP stays up so you can configure from phone/laptop
+    Serial.println("Reached retry limit. Keeping AP up. Connect to 'Azan' and set Wi-Fi.");
+    Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+    return;
+  }
 
-        // Blink LED every 100ms
-        if (currentMillis - blinkLastTime >= 100) {
-            blinkLastTime = currentMillis;
-            digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH); // Toggle LED
-            ledState = !ledState;
-        }
+  // IMPORTANT: keep AP alive while connecting
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.hostname("azan");
 
-        // Handle incoming HTTP requests to update credentials
-        server.handleClient();
+  Serial.println("Attempting to connect to Wi-Fi using stored credentials...");
+  WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
 
-        // Small delay to avoid overloading the CPU
-        delay(10);
+  // Blink LED while waiting (max 10s)
+  unsigned long startTime = millis();
+  unsigned long blinkLastTime = 0;
+  static bool ledState = false;
+
+  while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 10000UL) {
+    unsigned long t = millis();
+    if (t - blinkLastTime >= 100UL) {
+      blinkLastTime = t;
+      ledState = !ledState;
+      digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
     }
+    server.handleClient(); // keep portal responsive
+    delay(10);
+  }
 
-    // Check connection status
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\nConnected successfully!");
-        Serial.println("IP Address: " + WiFi.localIP().toString());
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    tries = 0; // reset on success
+    Serial.println("\nConnected successfully!");
+    Serial.print("IP Address: "); Serial.println(WiFi.localIP());
+
+    if (MDNS.begin("azan")) {
+      MDNS.addService("http", "tcp", 80);
+      Serial.println("mDNS: http://azan.local");
     } else {
-        Serial.println("\nFailed to connect within the timeout period.");
+      Serial.println("mDNS start failed");
     }
+  } else {
+    tries++;
+    Serial.println("\nFailed to connect within the timeout period.");
+  }
 }
+
 
 
 // Return minutes-from-midnight and seconds from the TimeManager's currentTime()
@@ -106,66 +156,184 @@ static void getNowMinSec(int& nowMin, int& nowSec) {
   nowMin  = hh * 60 + mm;
 }
 
-void handleConnectedOperations() {
-  if (WiFi.status() != WL_CONNECTED) return;
 
-  static unsigned long lastOperationTime = 0;
-  static bool ledState = false;
-  static int lastTriggered = -1;  // -1 = none, 0=Fajr,1=Sunrise,2=Dhuhr,3=Asr,4=Maghrib,5=Isha
 
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastOperationTime >= 5000) {
-    lastOperationTime = currentMillis;
 
-    // Blink heartbeat
-    ledState = !ledState;
-    digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
 
-    // Get current time string
-    String nowStr = currentTime();
-    Serial.println("Check at " + nowStr);
 
-    // Compute today's prayer times
-    int year, month, day;
-    getCurrentYMD(year, month, day);
-    double lat = storedLatitude.toFloat();
-    double lon = storedLongitude.toFloat();
-    float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f : storedTimeZone.toFloat();
+static bool checkConnectionAndRateLimit() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  unsigned long now = millis();
+  if (now - lastOperationTime < 5000UL) return false;  // run ~every 5s
+  lastOperationTime = now;
+  return true;
+}
 
-    PrayerTimes pt;
-    computePrayerTimes(year, month, day, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+static void toggleHeartbeatLED() {
+  heartbeatState = !heartbeatState;
+  digitalWrite(LED_BUILTIN, heartbeatState ? LOW : HIGH);
+}
 
-    // Match current time
-    int nowMin, nowSec;
-    getNowMinSec(nowMin, nowSec);
+static void logCurrentTime() {
+  String nowStr = currentTime();  // "YYYY-MM-DD HH:MM:SS"
+  Serial.println("Check at " + nowStr);
+}
 
-    bool matched = false;
-    String matchName = "";
+static void updatePrayerTimesIfDateChanged(PrayerTimes &pt) {
+  int y, m, d;
+  getCurrentYMD(y, m, d);
 
-    auto checkAndTrigger = [&](int targetMin, int id, const char* name, bool fajr=false) {
-      if (nowMin == targetMin && nowSec == 0 && lastTriggered != id) {
-        matched = true;
-        matchName = name;
-        if (fajr) playFajr(); else playOthers();
-        lastTriggered = id;
-      }
-    };
+  double lat = storedLatitude.toFloat();
+  double lon = storedLongitude.toFloat();
+  float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0)
+                 ? 0.0f : storedTimeZone.toFloat();
 
-    checkAndTrigger(pt.fajrMin,    0, "Fajr", true);
-    checkAndTrigger(pt.dhuhrMin,   2, "Dhuhr");
-    checkAndTrigger(pt.asrMin,     3, "Asr");
-    checkAndTrigger(pt.maghribMin, 4, "Maghrib");
-    checkAndTrigger(pt.ishaMin,    5, "Isha");
-
-    // Debug output
-    if (matched) {
-      Serial.println("Matching result: Matched with " + matchName);
-    } else {
-      Serial.println("Matching result: No match");
-    }
-    Serial.println();
+  if (y != lastY || m != lastM || d != lastD) {
+    computePrayerTimes(y, m, d, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+    printPrayerTimesToday();
+    lastY = y; lastM = m; lastD = d;
   }
 }
+
+static String checkAndTriggerPrayer(const PrayerTimes &pt, int nowMin) {
+  auto ring = [&](int targetMin, const char* name, bool fajr=false) -> String {
+    if (nowMin != targetMin) return String();
+    if (fajr) {
+      playMP3Index(1);           // /MP3/0001.mp3 (Fajr)
+      waitForFinish(180000);
+    } else {
+      playMP3Index(2);           // /MP3/0002.mp3 (others)
+      waitForFinish(180000);
+    }
+    delay(100);
+    return String(name);
+  };
+
+  String m;
+  if ((m = ring(pt.fajrMin,    "Fajr",    true)).length()) return m;
+  if ((m = ring(pt.dhuhrMin,   "Dhuhr")).length())         return m;
+  if ((m = ring(pt.asrMin,     "Asr")).length())           return m;
+  if ((m = ring(pt.maghribMin, "Maghrib")).length())       return m;
+  if ((m = ring(pt.ishaMin,    "Isha")).length())          return m;
+  return String();
+}
+
+
+
+void handleConnectedOperations() {
+  if (!checkConnectionAndRateLimit()) return;
+
+  toggleHeartbeatLED();
+  logCurrentTime();
+  updatePrayerTimesIfDateChanged(todaysPT);
+
+  int nowMin, nowSec;
+  getNowMinSec(nowMin, nowSec);     // ignores seconds for matching
+
+  // Only evaluate once per minute — but update AFTER matching
+  if (nowMin == lastMinuteChecked) {
+    Serial.println("Matching result: No match");
+    Serial.println();
+    return;
+  }
+
+  String match = checkAndTriggerPrayer(todaysPT, nowMin);
+  if (match.length()) {
+    Serial.println("Matching result: Matched with " + match);
+  } else {
+    Serial.println("Matching result: No match");
+  }
+
+  // <-- crucial: update after checks so you don't miss the first pass at xx:00
+  lastMinuteChecked = nowMin;
+  Serial.println();
+}
+
+
+
+// void handleConnectedOperations() {
+//   if (WiFi.status() != WL_CONNECTED) return;
+
+//   static unsigned long lastOperationTime = 0;
+//   static bool ledState = false;
+
+//   // Recompute prayer times once per day; run matching once per minute
+//   static int lastY = 0, lastM = 0, lastD = 0;
+//   static int lastMinuteChecked = -1;
+//   static PrayerTimes pt;  // cached for the day
+
+//   unsigned long currentMillis = millis();
+//   if (currentMillis - lastOperationTime < 5000) return;
+//   lastOperationTime = currentMillis;
+
+//   // 1) Heartbeat LED
+//   ledState = !ledState;
+//   digitalWrite(LED_BUILTIN, ledState ? LOW : HIGH);
+
+//   // 2) Print current timestamp
+//   String nowStr = currentTime();  // "YYYY-MM-DD HH:MM:SS"
+//   Serial.println("Check at " + nowStr);
+
+//   // 3) Prepare inputs & recompute if the date changed
+//   int y, m, d;
+//   getCurrentYMD(y, m, d);
+
+//   double lat = storedLatitude.toFloat();
+//   double lon = storedLongitude.toFloat();
+//   float  tz  = (storedTimeZone == "UTC" || storedTimeZone.length() == 0) ? 0.0f
+//                                                                          : storedTimeZone.toFloat();
+
+//   if (y != lastY || m != lastM || d != lastD) {
+//     computePrayerTimes(y, m, d, lat, lon, tz, -15.0, -15.0, ASR_HANAFI, pt);
+//     printPrayerTimesToday();  // print the schedule for the new day
+//     lastY = y; lastM = m; lastD = d;
+//   }
+
+//   // 4) Minute-level matching (ignore seconds)
+//   int nowMin, nowSec;
+//   getNowMinSec(nowMin, nowSec);   // you already have this; we ignore nowSec
+
+//   // Only evaluate once when the minute flips
+//   if (nowMin == lastMinuteChecked) {
+//     Serial.println("Matching result: No match");
+//     Serial.println();
+//     return;
+//   }
+//   lastMinuteChecked = nowMin;
+
+//   bool matched = false;
+//   String matchName = "";
+
+//   auto trigger = [&](int targetMin, const char* name, bool fajr = false) {
+//     if (nowMin == targetMin) {
+//       matched = true;
+//       matchName = name;
+//       if (fajr) {
+//         playMP3Index(1);           // /MP3/0001.mp3 (Fajr)
+//         waitForFinish(180000); // 166s
+//         delay(100);
+//       } else {
+//         playMP3Index(2);           // /MP3/0002.mp3 (others)
+//         waitForFinish(180000); //130s
+//         delay(100);
+//       }
+//     }
+//   };
+
+//   trigger(pt.fajrMin,    "Fajr",    true);
+//   trigger(pt.dhuhrMin,   "Dhuhr");
+//   trigger(pt.asrMin,     "Asr");
+//   trigger(pt.maghribMin, "Maghrib");
+//   trigger(pt.ishaMin,    "Isha");
+
+//   if (matched) {
+//     Serial.println("Matching result: Matched with " + matchName);
+//   } else {
+//     Serial.println("Matching result: No match");
+//   }
+//   Serial.println();
+// }
+
 
 
 
@@ -222,7 +390,7 @@ void loop() {
     // Handle HTTP requests
   //  handleServerRequests();
     server.handleClient();
-
+MDNS.update();
     // If not connected, attempt to connect with saved credentials
     if (WiFi.status() != WL_CONNECTED) {
         attemptWiFiConnection();
