@@ -20,12 +20,12 @@ void computePrayerTimes(
     PrayerTimes &out)
 {
   // 4) Export (minutes from local midnight) – using fixed custom values
-  out.fajrMin    = 10 *60 + 47;  // 04:15
-  out.sunriseMin = 10 *60 +  48;  // 06:00
-  out.dhuhrMin   = 10 *60 + 50;  // 13:15
-  out.asrMin     = 10 *60 +  53;  // 18:05
-  out.maghribMin = 10 *60 + 56;  // 20:23
-  out.ishaMin    = 10 *60 + 59;  // 22:10
+  out.fajrMin    = 19 *60 + 47;  // 04:15
+  out.sunriseMin = 19 *60 +  48;  // 06:00
+  out.dhuhrMin   = 19 *60 + 50;  // 13:15
+  out.asrMin     = 19 *60 +  53;  // 18:05
+  out.maghribMin = 19 *60 + 56;  // 20:23
+  out.ishaMin    = 19 *60 + 59;  // 22:10
 }
 
 

@@ -6,8 +6,10 @@
 //  MP3 RX <- ESP D6 (GPIO12) [ESP TX]
 //  GND <-> GND, VCC 3.2–5.2 V (level-shift MP3 TX if VCC=5V)
 
-#define RX_PIN D5
-#define TX_PIN D6
+// #define RX_PIN D5
+// #define TX_PIN D6
+#define RX_PIN D2
+#define TX_PIN D1
 static SoftwareSerial mp3Serial(RX_PIN, TX_PIN);  // RX, TX
 
 // ---- YX5300 helpers ----
